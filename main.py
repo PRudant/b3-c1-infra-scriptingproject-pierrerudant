@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 
-Token = "MTA1MDMyODEyNjUyMzE5MTM3OA.GtEPNx.KbbrYw_HYEuPC5PNHMntHvhDhNWN6ytqapmzlc"
+Token = "TATA"
 client = discord.Client(intents=discord.Intents.default(), command_prefix = "!", description = "Bot de Pierre")
 
 
