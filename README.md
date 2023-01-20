@@ -1,4 +1,4 @@
-<h1 align="center">SkyblockAddons</h1>
+<h1 align="center">Bot Papy - Economie & Mini Jeux</h1>
 
 ## Installation
 
