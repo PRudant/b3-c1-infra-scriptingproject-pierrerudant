@@ -1,8 +1,8 @@
-# b3-c1-infra-scriptingproject-pierrerudant
+<h1 align="center">SkyblockAddons</h1>
 
 ## Installation
 
-```pip install nextcord aiosqlite```
+`pip install nextcord aiosqlite`
 
 
 ## Configuration
