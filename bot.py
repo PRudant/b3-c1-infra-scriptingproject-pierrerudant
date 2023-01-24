@@ -14,15 +14,17 @@ import nextcord
 intents = nextcord.Intents.all()
 intents.message_content = True
 
-from config import TOKEN
+from config import TOKEN, restartcommand
 import asyncio
 import aiosqlite
 import random
 from typing import Optional
 #import datatime
 
-bot = commands.Bot(command_prefix='!', intents=intents)
-
+bot = commands.Bot(command_prefix='$', intents=intents)
+base_wallet = 0
+base_bank = 500
+base_maxbank = 10000
 
 ##########
 #
@@ -33,12 +35,18 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 @bot.event
 async def on_ready():
     print("Papy vient de se réveiller")
-    bot.db = await aiosqlite.connect("bank.db")
+    bot.db = await aiosqlite.connect("papy.db")
     await asyncio.sleep(3)
     async with bot.db.cursor() as cursor:
-        await cursor.execute("CREATE TABLE IF NOT EXISTS bank(wallet INTEGER, bank INTEGER, maxbank INTEGER, user INTEGER)")
+        await cursor.execute("CREATE TABLE IF NOT EXISTS economy(wallet INTEGER, bank INTEGER, maxbank INTEGER, user INTEGER)")
+        ## Wallet = Valeur du Portefeuille, bank = Valeur en Banque, maxbank = Valeur maximum en Banque, user = ID de l'utilisateur Discord
+        await cursor.execute("CREATE TABLE IF NOT EXISTS reply(message INTEGER, state INTEGER, game INTEGER, replyid INT)")
+        ## message = Message lors du PREFIX(work, slut, crime), state = [success, escape, fail], game = [work, slut, crime], replyID = reconnaître un message
+        await cursor.execute("CREATE TABLE IF NOT EXISTS job(minpaid INTEGER, maxpaid INTEGER, minfine INTEGER, maxfine INTEGER, chance INTEGER, game INTEGER)")
+        ## minpaid = Paiement Minimum, maxpaid = Paiement Maximum, minfine = Amende Minimum, maxfine = Amende Maximum, chance = Chance de réussite, game = Jeu (work, slut, crime, rob)
+        #print("Papy n'a pas trouver son classeur, il va donc en acheter un nouveau")
     await bot.db.commit()
-    print("Papy vient de retrouver son classeur")
+    print("Papy vient de trouver son classeur")
 
 
 ##########
@@ -49,36 +57,37 @@ async def on_ready():
 
 async def create_balance(user):
     async with bot.db.cursor() as cursor:
-        await cursor.execute("INSERT INTO bank VALUES(?, ?, ?, ?)", (0, 100, 10000, user.id))
+        await cursor.execute("INSERT INTO economy VALUES(?, ?, ?, ?)", (base_wallet, base_bank, base_maxbank, user.id))
     await bot.db.commit()
     return
 
+
 async def get_balance(user):
     async with bot.db.cursor() as cursor:
-        await cursor.execute("SELECT wallet, bank, maxbank FROM bank WHERE user = ?", (user.id,))
+        await cursor.execute("SELECT wallet, bank, maxbank FROM economy WHERE user = ?", (user.id,))
         data = await cursor.fetchone()
         if data is None:
             await create_balance(user)
-            return 0, 100, 10000
+            return base_wallet, base_bank, base_maxbank
         wallet, bank, maxbank = data[0], data[1], data[2]
         return wallet, bank, maxbank
 
 async def update_wallet(user, amount):
     async with bot.db.cursor() as cursor:
-        await cursor.execute("SELECT wallet FROM bank WHERE user = ?", (user.id,))
+        await cursor.execute("SELECT wallet FROM economy WHERE user = ?", (user.id,))
         data = await cursor.fetchone()
 
         if data is None:
             await create_balance(user)
             return 0
 
-        await cursor.execute("UPDATE bank SET wallet = ? WHERE user = ?", (data[0] + amount, user.id))
+        await cursor.execute("UPDATE economy SET wallet = ? WHERE user = ?", (data[0] + amount, user.id))
     await bot.db.commit()
 
 
 async def update_bank(user, amount):
     async with bot.db.cursor() as cursor:
-        await cursor.execute("SELECT wallet, bank, maxbank FROM bank WHERE user = ?", (user.id,))
+        await cursor.execute("SELECT wallet, bank, maxbank FROM economy WHERE user = ?", (user.id,))
         data = await cursor.fetchone()
         
         if data is None:
@@ -90,8 +99,9 @@ async def update_bank(user, amount):
             await update_wallet(user, amount)
             return 1
 
-        await cursor.execute("UPDATE bank SET wallet = ? AND bank = ? WHERE user = ?", (data[0], data[1] + amount, user.id))
+        await cursor.execute("UPDATE economy SET bank = ? WHERE user = ?", (data[1] + amount, user.id))
     await bot.db.commit()
+
 
 ##########
 #
@@ -99,7 +109,7 @@ async def update_bank(user, amount):
 #
 ##########
 
-@bot.command()
+@bot.command(name="balance", aliases=["bal", "b", "money",], description="Permet de voir l'argent dans le portefeuille et en banque d'un utilisateur")
 async def balance(ctx: commands.Context, member: nextcord.Member = None):
     if not member:
         member = ctx.author
@@ -110,47 +120,46 @@ async def balance(ctx: commands.Context, member: nextcord.Member = None):
     await ctx.send(embed=em)
 
 
-@bot.command()
-@commands.cooldown(1, 2, commands.BucketType.user)
+@bot.command(name="work", aliases=["wor", "wk"], description="Fait un travail normal")
+@commands.cooldown(1, 180, commands.BucketType.user)
 async def work(ctx: commands.Context):
     chances = random.randint(1, 4)
     if chances == 1:
-        return await ctx.send("You got nothing")
+        return await ctx.send("Tu es en retard au travail, le patron ne veut plus de toi, tu pars les mains vides")
     amount = random.randint(50, 100)
     res = await update_wallet(ctx.author, amount)
     if res == 0:
-        return await ctx.send("No account found so one has been created for you. Please run the command again !")
-    await ctx.send(f"You got {amount} coins !")
+        return await ctx.send("{restartcommand}")
+    await ctx.send(f"Bravo grâce à votre travail, vous avez gagné {amount} coins !")
 
 
-@bot.command()
-@commands.cooldown(1, 2, commands.BucketType.user)
-async def withdraw(ctx: commands.Context, amount):
-    wallet, bank, maxbank = await get_balance(ctx.author)
-    try:
-        amount = int(amount)
-    except ValueError:
-        pass
-
-    if type(amount) == str:
-        if amount.lower() == "max" or amount.lower() == "all":
-            amount = int(bank)
-    else:
-        amount = int(amount)
-
-    bank_res = await update_bank(ctx.author, -amount)
-    wallet_res = await update_wallet(ctx.author, amount)
-    if bank_res == 0 or wallet_res == 0:
-        return await ctx.send("No account found so one has been created for you. Please run the command again !")
-    
-    wallet, bank, maxbank = await get_balance(ctx.author)
-    em = nextcord.Embed(title=f"{amount} coins have bein withdrew")
-    em.add_field(name="New Wallet", value=wallet)
-    em.add_field(name="New Bank", value=f"{bank}/{maxbank}")
-    await ctx.send(embed=em)
+@bot.command(name="slut", aliases=["st"], description="Lance toi dans des travaux pas forcément bien vu")
+@commands.cooldown(1, 240, commands.BucketType.user)
+async def work(ctx: commands.Context):
+    chances = random.randint(1, 4)
+    if chances == 1:
+        return await ctx.send("Tu n'as pas réussi à slut malheureusement")
+    amount = random.randint(150, 300)
+    res = await update_wallet(ctx.author, amount)
+    if res == 0:
+        return await ctx.send("{restartcommand}")
+    await ctx.send(f"Bravo grâce à votre *travail*, vous avez gagné {amount} coins !")
 
 
-@bot.command()
+@bot.command(name="crime", aliases=["cr", "cm"], description="Lance toi dans une carrière criminel")
+@commands.cooldown(1, 300, commands.BucketType.user)
+async def work(ctx: commands.Context):
+    chances = random.randint(1, 4)
+    if chances == 1:
+        return await ctx.send("Malheureusement vous n'avez pas réussi votre coup cette fois-ci")
+    amount = random.randint(300, 500)
+    res = await update_wallet(ctx.author, amount)
+    if res == 0:
+        return await ctx.send("{restartcommand}")
+    await ctx.send(f"Bravo grâce à votre *crime*, vous avez gagné {amount} coins !")
+
+
+@bot.command(name="deposit", aliases=["dep", "dp"], description="Dépose de l'argent dans ta banque")
 @commands.cooldown(1, 2, commands.BucketType.user)
 async def deposit(ctx: commands.Context, amount):
     wallet, bank, maxbank = await get_balance(ctx.author)
@@ -168,7 +177,7 @@ async def deposit(ctx: commands.Context, amount):
     bank_res = await update_bank(ctx.author, amount)
     wallet_res = await update_wallet(ctx.author, -amount)
     if bank_res == 0 or wallet_res == 0:
-        return await ctx.send("No account found so one has been created for you. Please run the command again !")
+        return await ctx.send("{restartcommand}")
     elif bank_res == 1:
         return await ctx.send("You don't have enough storage in your bank !")
 
@@ -179,21 +188,101 @@ async def deposit(ctx: commands.Context, amount):
     await ctx.send(embed=em)
 
 
+@bot.command(name="withdraw", aliases=["with", "wit", "wd"], description="Retire de l'argent de ta banque")
+@commands.cooldown(1, 2, commands.BucketType.user)
+async def withdraw(ctx: commands.Context, amount):
+    wallet, bank, maxbank = await get_balance(ctx.author)
+    try:
+        amount = int(amount)
+    except ValueError:
+        pass
+
+    if type(amount) == str:
+        if amount.lower() == "max" or amount.lower() == "all":
+            amount = int(bank)
+    else:
+        amount = int(amount)
+
+    bank_res = await update_bank(ctx.author, -amount)
+    wallet_res = await update_wallet(ctx.author, amount)
+    if bank_res == 0 or wallet_res == 0:
+        return await ctx.send("{restartcommand}")
+    
+    wallet, bank, maxbank = await get_balance(ctx.author)
+    em = nextcord.Embed(title=f"{amount} coins have bein withdrew")
+    em.add_field(name="New Wallet", value=wallet)
+    em.add_field(name="New Bank", value=f"{bank}/{maxbank}")
+    await ctx.send(embed=em)
+
+
+@bot.command()
+@commands.cooldown(1, 2, commands.BucketType.user)
+async def give(ctx: commands.Context, member: nextcord.Member, amount):
+    wallet, bank, maxbank = await get_balance(ctx.author)
+    try:
+        amount = int(amount)
+    except ValueError:
+        pass
+
+    if type(amount) == str:
+        if amount.lower() == "max" or amount.lower() == "all":
+            amount = int(bank)
+    else:
+        amount = int(amount)
+
+    wallet_res = await update_wallet(ctx.author, -amount)
+    wallet_res2 = await update_wallet(member, amount)
+    if wallet_res == 0 or wallet_res == 0:
+        return ctx.send("{restartcommand}")
+
+    wallet2, bank2, maxbank2 = await get_balance(member)
+
+    em = nextcord.Embed(title=f"Gave {amount} coins to {member.name}")
+    em.add_field(name=f"{ctx.author.name} Wallet", value=wallet-amount)
+    em.add_field(name=f"{member.name} Wallet", value=wallet2)
+    await ctx.send(embed=em)
+
+
 ##########
 #
 #   COMMANDES ECONOMIE ADMINISTRATEUR
 #
 ##########
 
-@bot.command()
-async def reset_user(ctx: commands.Context, member: nextcord.Member = None):
-    if not member:
-        member = ctx.author
-    wallet, bank, maxbank = await create_balance(member)
-    await ctx.send(
-        "Compte de {member} reset !"
-    )
+@bot.command("add-money", aliases=["addm", "am"], description="Donne de l'argent a un membre")
+@commands.cooldown(1, 1, commands.BucketType.user)
+async def add_money(ctx: commands.Context, member: nextcord.Member, amount):
+    wallet, bank, maxbank = await get_balance(ctx.author)
+    try:
+        amount = int(amount)
+    except ValueError:
+        pass
+    res = await update_wallet(member, amount)
+    await ctx.send(f"Tu as donner {amount} à {member}")
 
+
+@bot.command("remove-money", aliases=["removem", "rm"], description="Retire de l'argent a un membre")
+@commands.cooldown(1, 1, commands.BucketType.user)
+async def remove_money(ctx: commands.Context, member: nextcord.Member, amount):
+    wallet, bank, maxbank = await get_balance(ctx.author)
+    try:
+        amount = int(amount)
+    except ValueError:
+        pass
+    res = await update_wallet(member, -amount)
+    await ctx.send(f"Tu as retirer {amount} à {member}")
+
+@bot.command(name="work2")
+@commands.cooldown(1, 1, commands.BucketType.user)
+async def work2(ctx: commands.Context):
+    chances = random.randint(1, 4)
+    if chances == 1:
+        return await ctx.send("Tu es en retard au travail, le patron ne veut plus de toi, tu pars les mains vides")
+    amount = random.randint(50, 100)
+    res = await update_wallet(ctx.author, amount)
+    if res == 0:
+        return await ctx.send("{restartcommand}")
+    await ctx.send(f"Bravo grâce à votre travail, vous avez gagné {amount} coins !")
 
 ##########
 #
