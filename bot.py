@@ -19,13 +19,17 @@ import asyncio
 import aiosqlite
 import random
 from typing import Optional
-#import datatime
+
+from datetime import datetime
 
 bot = commands.Bot(command_prefix='$', intents=intents)
 base_wallet = 0
 base_bank = 500
 base_maxbank = 10000
-
+noenoughwallet = "Vous n'avez pas assez d'argent dans votre portefeuille"
+noenoughbank = "Vous n'avez pas assez d'argent dans votre banque"
+embedcolorsuccess = "0x66BB6A"
+embedcolorfail = "0xEF5250"
 ##########
 #
 #   LANCEMENT DU BOT
@@ -105,6 +109,34 @@ async def update_bank(user, amount):
 
 ##########
 #
+#   COMMANDES GENERAL
+#
+##########
+
+@bot.command(name="info", aliases=["i"])
+async def info(ctx: commands.Context, member: nextcord.Member = None):
+    if not member:
+        member = ctx.author
+
+    em = nextcord.Embed(colour=0x66BB6A, title=member, 
+    icon_url=member.avatar.url, url=member.avatar.url)
+    em.set_author(name=ctx.author)
+    em.add_field(name="Création du compte", value=member.created_at.strftime("%d/%m/%Y à %H:%M:%S"))
+    em.add_field(name="A rejoint", value=member.joined_at.strftime("%d/%m/%Y à %H:%M:%S"))
+    em.add_field(name="Mention", value=member.mention)
+    em.add_field(name="Pseudo#ID", value=member)
+    em.add_field(name="Pseudo", value=member.name)
+    em.add_field(name="ID", value=member.id)
+    #em.add_field(name="URL", value=member.avatar.url)
+    em.add_field(name="Top Role", value=member.top_role)
+    em.add_field(name="Roles", value=member.roles)
+    em.add_field(name="Serveur", value=member.guild)
+    em.set_thumbnail(member.display_avatar)
+    em.set_footer(text="tata")
+    await ctx.send(embed=em)
+
+##########
+#
 #   COMMANDES ECONOMIE
 #
 ##########
@@ -129,7 +161,7 @@ async def work(ctx: commands.Context):
     amount = random.randint(50, 100)
     res = await update_wallet(ctx.author, amount)
     if res == 0:
-        return await ctx.send("{restartcommand}")
+        return await ctx.send(restartcommand)
     await ctx.send(f"Bravo grâce à votre travail, vous avez gagné {amount} coins !")
 
 
@@ -142,7 +174,7 @@ async def work(ctx: commands.Context):
     amount = random.randint(150, 300)
     res = await update_wallet(ctx.author, amount)
     if res == 0:
-        return await ctx.send("{restartcommand}")
+        return await ctx.send(restartcommand)
     await ctx.send(f"Bravo grâce à votre *travail*, vous avez gagné {amount} coins !")
 
 
@@ -155,9 +187,42 @@ async def work(ctx: commands.Context):
     amount = random.randint(300, 500)
     res = await update_wallet(ctx.author, amount)
     if res == 0:
-        return await ctx.send("{restartcommand}")
+        return await ctx.send(restartcommand)
     await ctx.send(f"Bravo grâce à votre *crime*, vous avez gagné {amount} coins !")
 
+embedcolorsuccess = "0x66BB6A"
+embedcolorfail = "0xEF5250"
+embedcolor = "yes"
+
+async def embedmessage(user, message, valeur):
+    if embedcolor == "success":
+        em = nextcord.Embed(color=0x66BB6A, title=f"{user}")
+
+    elif embedcolor == "fail":
+        em = nextcord.Embed(color=0xEF5250, title=f"{user}")
+
+    else:
+        em = nextcord.Embed(color=0x66BB6A, title=f"{user}")
+
+    return
+
+
+@bot.command(name="embedtest", aliases=["edt"])
+async def embedtest2(ctx: commands.Context, member: nextcord.Member = None):
+    if not member:
+        member = ctx.author
+    #timestamp = datetime.datetime.utcnow()
+
+    em = nextcord.Embed(colour=0x66BB6A, title=member)
+    em.set_author(name=ctx.author)
+    em.add_field(name="BLABLA1", value="Value of field 1")
+    em.add_field(name="BLABLA2", value="Value of field 2")
+    em.add_field(name="Name", value=member)
+    em.add_field(name="URL", value=member.avatar.url)
+    em.set_footer(text="tata")
+    await ctx.send(embed=em)
+
+### https://cog-creators.github.io/discord-embed-sandbox/
 
 @bot.command(name="deposit", aliases=["dep", "dp"], description="Dépose de l'argent dans ta banque")
 @commands.cooldown(1, 2, commands.BucketType.user)
@@ -174,19 +239,22 @@ async def deposit(ctx: commands.Context, amount):
     else:
         amount = int(amount)
 
-    bank_res = await update_bank(ctx.author, amount)
-    wallet_res = await update_wallet(ctx.author, -amount)
-    if bank_res == 0 or wallet_res == 0:
-        return await ctx.send("{restartcommand}")
-    elif bank_res == 1:
-        return await ctx.send("You don't have enough storage in your bank !")
+    if wallet - amount >= 0:
+        bank_res = await update_bank(ctx.author, amount)
+        wallet_res = await update_wallet(ctx.author, -amount)
+        if bank_res == 0 or wallet_res == 0:
+            return await ctx.send("{restartcommand}")
+        elif bank_res == 1:
+            return await ctx.send("You don't have enough storage in your bank !")
 
-    wallet, bank, maxbank = await get_balance(ctx.author)
-    em = nextcord.Embed(title=f"{amount} coins have bein deposit")
-    em.add_field(name="New Wallet", value=wallet)
-    em.add_field(name="New Bank", value=f"{bank}/{maxbank}")
-    await ctx.send(embed=em)
+        wallet, bank, maxbank = await get_balance(ctx.author)
+        em = nextcord.Embed(color=0x66BB6A, title=f"{amount} coins have bein deposit")
+        em.add_field(name="New Wallet", value=wallet)
+        em.add_field(name="New Bank", value=f"{bank}/{maxbank}")
+        await ctx.send(embed=em)
 
+    else:
+        return await ctx.send(noenoughwallet)
 
 @bot.command(name="withdraw", aliases=["with", "wit", "wd"], description="Retire de l'argent de ta banque")
 @commands.cooldown(1, 2, commands.BucketType.user)
@@ -203,16 +271,20 @@ async def withdraw(ctx: commands.Context, amount):
     else:
         amount = int(amount)
 
-    bank_res = await update_bank(ctx.author, -amount)
-    wallet_res = await update_wallet(ctx.author, amount)
-    if bank_res == 0 or wallet_res == 0:
-        return await ctx.send("{restartcommand}")
+    if bank - amount >= 0:
+        bank_res = await update_bank(ctx.author, -amount)
+        wallet_res = await update_wallet(ctx.author, amount)
+        if bank_res == 0 or wallet_res == 0:
+            return await ctx.send("{restartcommand}")
+        
+        wallet, bank, maxbank = await get_balance(ctx.author)
+        em = nextcord.Embed(color=0x66BB6A, title=f"{amount} coins have bein withdrew")
+        em.add_field(name="New Wallet", value=wallet)
+        em.add_field(name="New Bank", value=f"{bank}/{maxbank}")
+        await ctx.send(embed=em)
     
-    wallet, bank, maxbank = await get_balance(ctx.author)
-    em = nextcord.Embed(title=f"{amount} coins have bein withdrew")
-    em.add_field(name="New Wallet", value=wallet)
-    em.add_field(name="New Bank", value=f"{bank}/{maxbank}")
-    await ctx.send(embed=em)
+    else:
+        return await ctx.send(noenoughbank)
 
 
 @bot.command()
@@ -230,18 +302,21 @@ async def give(ctx: commands.Context, member: nextcord.Member, amount):
     else:
         amount = int(amount)
 
-    wallet_res = await update_wallet(ctx.author, -amount)
-    wallet_res2 = await update_wallet(member, amount)
-    if wallet_res == 0 or wallet_res == 0:
-        return ctx.send("{restartcommand}")
+    if wallet - amount >= 0:
+        wallet_res = await update_wallet(ctx.author, -amount)
+        wallet_res2 = await update_wallet(member, amount)
+        if wallet_res == 0 or wallet_res == 0:
+            return ctx.send("{restartcommand}")
 
-    wallet2, bank2, maxbank2 = await get_balance(member)
+        wallet2, bank2, maxbank2 = await get_balance(member)
 
-    em = nextcord.Embed(title=f"Gave {amount} coins to {member.name}")
-    em.add_field(name=f"{ctx.author.name} Wallet", value=wallet-amount)
-    em.add_field(name=f"{member.name} Wallet", value=wallet2)
-    await ctx.send(embed=em)
+        em = nextcord.Embed(color=0x66BB6A, title=f"Gave {amount} coins to {member.name}")
+        em.add_field(name=f"{ctx.author.name} Wallet", value=wallet-amount)
+        em.add_field(name=f"{member.name} Wallet", value=wallet2)
+        await ctx.send(embed=em)
 
+    else:
+        return await ctx.send(noenoughwallet)
 
 ##########
 #
@@ -316,6 +391,22 @@ async def say(interaction: nextcord.Interaction, message: nextcord.Message):
 #   SECTION 3
 #
 ##########
+
+
+@bot.command(name="embedtest0", aliases=["edt0"])
+async def embedtest0(ctx: commands.Context, member: nextcord.Member = None):
+    if not member:
+        member = ctx.author
+    #timestamp = datetime.datetime.utcnow()
+
+    em = nextcord.Embed(colour=0x66BB6A, title=member)
+    em.set_author(name=ctx.author)
+    em.add_field(name="BLABLA1", value="Value of field 1")
+    em.add_field(name="BLABLA2", value="Value of field 2")
+    em.add_field(name="Name", value=member)
+    em.add_field(name="URL", value=ctx.author.avatar.url)
+    em.set_footer(text="tata")
+    await ctx.send(embed=em)
 
 
 @bot.slash_command()
